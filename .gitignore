@@ -1,0 +1,4 @@
+/.deps
+*.json
+artifacts/
+/.states
