@@ -61,7 +61,7 @@ contract NativeChainPublicSale {
 
     // events ---------------------
 
-    event TokenTransfered(address indexed idoAddress, address indexed walletAddress, uint256 usdtAmount , uint256 tokenAmount );
+    event TokenBuy(address indexed idoAddress, address indexed walletAddress, uint256 usdtAmount , uint256 tokenAmount );
 
     constructor(address _withdrawlAddress , address _adminAddress, address _usdtContractAddress)  {
         withdrawlAddress = _withdrawlAddress;
@@ -97,10 +97,11 @@ contract NativeChainPublicSale {
         tokenBalance[_idoTokenAddress][msg.sender] += calculatedTokens;
 
         // transfer funds 
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
+        
         require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
-        require(tokenContract.transfer(msg.sender, calculatedTokens), "Failed to transfer ido tokens");
 
+        emit TokenBuy(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
+        
         return( _amountUsdt, publicSalesIdos[_idoTokenAddress].priceUsdt ,calculatedTokens , publicSalesIdos[_idoTokenAddress]);
     }
 
@@ -129,24 +130,37 @@ contract NativeChainPublicSale {
         
     }
 
-    function transferTokens(address _idoTokenAddress, uint256 _tokenAmount, uint256 usdtAmount, address _walletAddress) public  onlyAdmin {
-        require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
-        require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
-        require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
-        require(publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + usdtAmount <= publicSalesIdos[_idoTokenAddress].totalTargetUsdt  , "Exceeding total target");
+      function withdrawUSDT(address _idoAddress) external onlyAdmin {
+        require(
+            usdtContract.balanceOf(address(this)) > 0,
+            "No USDT balance to withdraw"
+        );
+        uint256 usdtRaisedByIdo = publicSalesIdos[_idoAddress].currentRaisedUsdt;
+        usdtContract.transfer(withdrawlAddress, usdtRaisedByIdo);
+    }
 
-        uint256 conversionFactor = 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
-        uint256 convertedUsdtAmount = usdtAmount * conversionFactor;
-        uint256 convertedPrice = publicSalesIdos[_idoTokenAddress].priceUsdt * conversionFactor;
-        uint256 calculatedTokens = (convertedUsdtAmount * 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS) ) / convertedPrice;
+    function withdrawToken(address _idoAddress) external onlyAdmin {
+        ERC20 idoContract = ERC20(_idoAddress);
 
-        require(_tokenAmount == calculatedTokens , "Usdt amount is not according to token amoun");
+        require(
+            idoContract.balanceOf(address(this)) > 0,
+            "No RC balance to withdraw"
+        );
+        idoContract.transfer(withdrawlAddress, idoContract.balanceOf(address(this)));
+    }
 
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
-        require(tokenContract.transfer(_walletAddress, _tokenAmount), "Failed to transfer ido tokens");
 
-        emit TokenTransfered(_idoTokenAddress, _walletAddress, usdtAmount, _tokenAmount);
+    // TODO: need to add sercurity flow with three wallets 
+    function setAdmin(address _newOwner) external onlyAdmin {
+        adminAddress = _newOwner;
+    }
 
+    function updateRaisedAmount(address _idoAddress ,address walletAddress,  uint256 _usdtAmount, uint256 _tokens  ) public onlyAdmin  {
+        publicSalesIdos[_idoAddress].currentRaisedUsdt = _usdtAmount;
+
+        totalTokenSold[_idoAddress] += _tokens;
+        totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
+        tokenBalance[_idoAddress][walletAddress] += _tokens;
     }
 
 }

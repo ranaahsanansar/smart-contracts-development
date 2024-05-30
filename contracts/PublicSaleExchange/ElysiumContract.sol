@@ -118,6 +118,8 @@ contract EXO_PublicSale_Elysium  is ReentrancyGuard {
         );
         usdtToken.transfer(withdrawlAddreess, usdtToken.balanceOf(address(this)));
     }
+
+    
     function withdrawRC() external onlyOwner {
         require(
             rcToken.balanceOf(address(this)) > 0,
