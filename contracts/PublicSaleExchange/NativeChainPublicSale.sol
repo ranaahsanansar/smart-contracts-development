@@ -101,6 +101,8 @@ contract NativeChainPublicSale {
         require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
         require(tokenContract.transfer(msg.sender, calculatedTokens), "Failed to transfer ido tokens");
 
+        emit TokenTransfered(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
+        
         return( _amountUsdt, publicSalesIdos[_idoTokenAddress].priceUsdt ,calculatedTokens , publicSalesIdos[_idoTokenAddress]);
     }
 
@@ -149,4 +151,28 @@ contract NativeChainPublicSale {
 
     }
 
+    function withdrawUSDT(address _idoAddress) external onlyAdmin {
+        require(
+            usdtContract.balanceOf(address(this)) > 0,
+            "No USDT balance to withdraw"
+        );
+        uint256 usdtRaisedByIdo = publicSalesIdos[_idoAddress].currentRaisedUsdt;
+        usdtContract.transfer(withdrawlAddress, usdtRaisedByIdo);
+    }
+
+    function withdrawToken(address _idoAddress) external onlyAdmin {
+        ERC20 idoContract = ERC20(_idoAddress);
+
+        require(
+            idoContract.balanceOf(address(this)) > 0,
+            "No RC balance to withdraw"
+        );
+        idoContract.transfer(withdrawlAddress, idoContract.balanceOf(address(this)));
+    }
+
+
+    // TODO: need to add sercurity flow with three wallets 
+    function setAdmin(address _newOwner) external onlyAdmin {
+        adminAddress = _newOwner;
+    }
 }
