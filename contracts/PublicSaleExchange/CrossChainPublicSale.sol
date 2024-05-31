@@ -75,13 +75,16 @@ contract NativeChainPublicSale {
     // public functions --------------------------
 
     // TODO: Remove returns 
-    function buy(address _idoTokenAddress , uint256 _amountUsdt) public returns(uint256, uint256 , uint256 , IdoInfo memory _info ) {
-        require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
-        require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
-        require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
+    function buy(address _idoTokenAddress , uint256 _amountUsdt) public {
+        // require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
+        require(_amountUsdt > 0 , "Invalid amount");
+        // require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
+        // require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
         require(publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + _amountUsdt <= publicSalesIdos[_idoTokenAddress].totalTargetUsdt  , "Exceeding total target");
         require(totalSpendUsdtPerWallet[_idoTokenAddress][msg.sender] + _amountUsdt <= publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet, "Exceeding per wallet limit");
         require(publicSalesIdos[_idoTokenAddress].priceUsdt != 0 , "This ido set to invalid price");
+
+        // TODO: add a check for minimum buy 
         // Determine the conversion factor
         uint256 conversionFactor = 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
   
@@ -102,7 +105,7 @@ contract NativeChainPublicSale {
 
         emit TokenBuy(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
         
-        return( _amountUsdt, publicSalesIdos[_idoTokenAddress].priceUsdt ,calculatedTokens , publicSalesIdos[_idoTokenAddress]);
+        // return( _amountUsdt, publicSalesIdos[_idoTokenAddress].priceUsdt ,calculatedTokens , publicSalesIdos[_idoTokenAddress]);
     }
 
     function updateIdoStatus(address _idoAddress, bool _status) public onlyAdmin {
@@ -111,7 +114,7 @@ contract NativeChainPublicSale {
     }
 
     function createPublicSaleForIdo(address _idoTokenAddress , uint256 _priceUsdt, uint256 _targetUsdt , uint256 _fromDate, uint256 _toDate, uint8 _decimals, uint256 _maxAllowed ) public onlyAdmin {
-        require(publicSalesIdos[_idoTokenAddress].toDate == 0 , "This sale is already registered");
+        // require(publicSalesIdos[_idoTokenAddress].toDate == 0 , "This sale is already registered");
         require(_targetUsdt != 0 
                 && _priceUsdt != 0 ,
                 "Invalid Aurguments");
@@ -155,12 +158,12 @@ contract NativeChainPublicSale {
         adminAddress = _newOwner;
     }
 
-    function updateRaisedAmount(address _idoAddress ,address walletAddress,  uint256 _usdtAmount, uint256 _tokens  ) public onlyAdmin  {
-        publicSalesIdos[_idoAddress].currentRaisedUsdt = _usdtAmount;
+    // function updateRaisedAmount(address _idoAddress ,address walletAddress,  uint256 _usdtAmount, uint256 _tokens  ) public onlyAdmin  {
+    //     publicSalesIdos[_idoAddress].currentRaisedUsdt = _usdtAmount;
 
-        totalTokenSold[_idoAddress] += _tokens;
-        totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
-        tokenBalance[_idoAddress][walletAddress] += _tokens;
-    }
+    //     totalTokenSold[_idoAddress] += _tokens;
+    //     totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
+    //     tokenBalance[_idoAddress][walletAddress] += _tokens;
+    // }
 
 }

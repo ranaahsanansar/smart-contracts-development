@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface ERC20 {
-
+interface USDTERC20 {
     function transferFrom(
         address _from,
         address _to,
         uint256 _value
-    ) external returns (bool success);
+    ) external;
 
-    function transfer(address _to, uint256 _value)
-        external
-        returns (bool success);
+    function transfer(address to, uint256 value) external;
 
     function balanceOf(address account) external view returns (uint256);
 
@@ -19,10 +16,6 @@ interface ERC20 {
         external
         view
         returns (uint256);
-
-
-    function totalSupply() external view  returns (uint256) ;
-
 }
 
 contract NativeChainPublicSale {
@@ -32,7 +25,7 @@ contract NativeChainPublicSale {
 
     address public withdrawlAddress;
     address public  adminAddress;
-    ERC20 public usdtContract;
+    USDTERC20 public usdtContract;
 
     struct IdoInfo {
         uint256 priceUsdt;
@@ -61,12 +54,12 @@ contract NativeChainPublicSale {
 
     // events ---------------------
 
-    event TokenTransfered(address indexed idoAddress, address indexed walletAddress, uint256 usdtAmount , uint256 tokenAmount );
+    event TokenBuy(address indexed idoAddress, address indexed walletAddress, uint256 usdtAmount , uint256 tokenAmount );
 
     constructor(address _withdrawlAddress , address _adminAddress, address _usdtContractAddress)  {
         withdrawlAddress = _withdrawlAddress;
         adminAddress = _adminAddress;
-        usdtContract = ERC20(_usdtContractAddress);
+        usdtContract = USDTERC20(_usdtContractAddress);
     }
 
     // private functions -------------------------
@@ -75,7 +68,7 @@ contract NativeChainPublicSale {
     // public functions --------------------------
 
     // TODO: Remove returns 
-    function buy(address _idoTokenAddress , uint256 _amountUsdt) public  {
+    function buy(address _idoTokenAddress , uint256 _amountUsdt) public {
         // require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
         require(_amountUsdt > 0 , "Invalid amount");
         // require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
@@ -83,6 +76,8 @@ contract NativeChainPublicSale {
         require(publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + _amountUsdt <= publicSalesIdos[_idoTokenAddress].totalTargetUsdt  , "Exceeding total target");
         require(totalSpendUsdtPerWallet[_idoTokenAddress][msg.sender] + _amountUsdt <= publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet, "Exceeding per wallet limit");
         require(publicSalesIdos[_idoTokenAddress].priceUsdt != 0 , "This ido set to invalid price");
+
+        // TODO: add a check for minimum buy 
         // Determine the conversion factor
         uint256 conversionFactor = 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
   
@@ -98,11 +93,10 @@ contract NativeChainPublicSale {
         tokenBalance[_idoTokenAddress][msg.sender] += calculatedTokens;
 
         // transfer funds 
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
-        require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
-        require(tokenContract.transfer(msg.sender, calculatedTokens), "Failed to transfer ido tokens");
+        
+        usdtContract.transferFrom(msg.sender, address(this), _amountUsdt);
 
-        emit TokenTransfered(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
+        emit TokenBuy(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
         
         // return( _amountUsdt, publicSalesIdos[_idoTokenAddress].priceUsdt ,calculatedTokens , publicSalesIdos[_idoTokenAddress]);
     }
@@ -132,27 +126,7 @@ contract NativeChainPublicSale {
         
     }
 
-    function transferTokens(address _idoTokenAddress, uint256 _tokenAmount, uint256 usdtAmount, address _walletAddress) public  onlyAdmin {
-        require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
-        require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
-        require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
-        require(publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + usdtAmount <= publicSalesIdos[_idoTokenAddress].totalTargetUsdt  , "Exceeding total target");
-
-        uint256 conversionFactor = 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
-        uint256 convertedUsdtAmount = usdtAmount * conversionFactor;
-        uint256 convertedPrice = publicSalesIdos[_idoTokenAddress].priceUsdt * conversionFactor;
-        uint256 calculatedTokens = (convertedUsdtAmount * 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS) ) / convertedPrice;
-
-        require(_tokenAmount == calculatedTokens , "Usdt amount is not according to token amoun");
-
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
-        require(tokenContract.transfer(_walletAddress, _tokenAmount), "Failed to transfer ido tokens");
-
-        emit TokenTransfered(_idoTokenAddress, _walletAddress, usdtAmount, _tokenAmount);
-
-    }
-
-    function withdrawUSDT(address _idoAddress) external onlyAdmin {
+      function withdrawUSDT(address _idoAddress) external onlyAdmin {
         require(
             usdtContract.balanceOf(address(this)) > 0,
             "No USDT balance to withdraw"
@@ -162,7 +136,7 @@ contract NativeChainPublicSale {
     }
 
     function withdrawToken(address _idoAddress) external onlyAdmin {
-        ERC20 idoContract = ERC20(_idoAddress);
+        USDTERC20 idoContract = USDTERC20(_idoAddress);
 
         require(
             idoContract.balanceOf(address(this)) > 0,
@@ -176,4 +150,13 @@ contract NativeChainPublicSale {
     function setAdmin(address _newOwner) external onlyAdmin {
         adminAddress = _newOwner;
     }
+
+    // function updateRaisedAmount(address _idoAddress ,address walletAddress,  uint256 _usdtAmount, uint256 _tokens  ) public onlyAdmin  {
+    //     publicSalesIdos[_idoAddress].currentRaisedUsdt = _usdtAmount;
+
+    //     totalTokenSold[_idoAddress] += _tokens;
+    //     totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
+    //     tokenBalance[_idoAddress][walletAddress] += _tokens;
+    // }
+
 }
