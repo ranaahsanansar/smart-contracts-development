@@ -18,7 +18,7 @@ interface USDTERC20 {
         returns (uint256);
 }
 
-contract NativeChainPublicSale {
+contract EthereumChainPublicSale {
 
     uint8 public constant USDT_DECIMALS = 6;
     
@@ -94,7 +94,7 @@ contract NativeChainPublicSale {
 
         // transfer funds 
         
-        usdtContract.transferFrom(msg.sender, address(this), _amountUsdt);
+        // usdtContract.transferFrom(msg.sender, address(this), _amountUsdt);
 
         emit TokenBuy(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
         

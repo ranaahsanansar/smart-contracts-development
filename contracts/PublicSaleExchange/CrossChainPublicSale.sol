@@ -25,7 +25,7 @@ interface ERC20 {
 
 }
 
-contract NativeChainPublicSale {
+contract CrossChainPublicSale {
 
     uint8 public constant USDT_DECIMALS = 6;
     
@@ -101,7 +101,7 @@ contract NativeChainPublicSale {
 
         // transfer funds 
         
-        require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
+        // require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
 
         emit TokenBuy(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
         
@@ -158,12 +158,9 @@ contract NativeChainPublicSale {
         adminAddress = _newOwner;
     }
 
-    // function updateRaisedAmount(address _idoAddress ,address walletAddress,  uint256 _usdtAmount, uint256 _tokens  ) public onlyAdmin  {
-    //     publicSalesIdos[_idoAddress].currentRaisedUsdt = _usdtAmount;
+    function getRemainingSupply(address _idoAddress) public view  returns (uint256){
+        return publicSalesIdos[_idoAddress].totalTargetUsdt - publicSalesIdos[_idoAddress].currentRaisedUsdt;
+    }
 
-    //     totalTokenSold[_idoAddress] += _tokens;
-    //     totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
-    //     tokenBalance[_idoAddress][walletAddress] += _tokens;
-    // }
 
 }

@@ -98,9 +98,9 @@ contract NativeChainPublicSale {
         tokenBalance[_idoTokenAddress][msg.sender] += calculatedTokens;
 
         // transfer funds 
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
-        require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
-        require(tokenContract.transfer(msg.sender, calculatedTokens), "Failed to transfer ido tokens");
+        // ERC20 tokenContract = ERC20(_idoTokenAddress);
+        // require(usdtContract.transferFrom(msg.sender, address(this), _amountUsdt) , "Unable to transfer usdt tokens");
+        // require(tokenContract.transfer(msg.sender, calculatedTokens), "Failed to transfer ido tokens");
 
         emit TokenTransfered(_idoTokenAddress, msg.sender, _amountUsdt, calculatedTokens);
         
@@ -132,10 +132,10 @@ contract NativeChainPublicSale {
         
     }
 
-    function transferTokens(address _idoTokenAddress, uint256 _tokenAmount, uint256 usdtAmount, address _walletAddress) public  onlyAdmin {
-        require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
-        require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
-        require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
+    function transferTokens(address _idoTokenAddress, uint256 usdtAmount, address _walletAddress) public  onlyAdmin {
+        // require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
+        // require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
+        // require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
         require(publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + usdtAmount <= publicSalesIdos[_idoTokenAddress].totalTargetUsdt  , "Exceeding total target");
 
         uint256 conversionFactor = 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
@@ -143,12 +143,10 @@ contract NativeChainPublicSale {
         uint256 convertedPrice = publicSalesIdos[_idoTokenAddress].priceUsdt * conversionFactor;
         uint256 calculatedTokens = (convertedUsdtAmount * 10**(publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS) ) / convertedPrice;
 
-        require(_tokenAmount == calculatedTokens , "Usdt amount is not according to token amoun");
+        // ERC20 tokenContract = ERC20(_idoTokenAddress);
+        // require(tokenContract.transfer(_walletAddress, calculatedTokens), "Failed to transfer ido tokens");
 
-        ERC20 tokenContract = ERC20(_idoTokenAddress);
-        require(tokenContract.transfer(_walletAddress, _tokenAmount), "Failed to transfer ido tokens");
-
-        emit TokenTransfered(_idoTokenAddress, _walletAddress, usdtAmount, _tokenAmount);
+        emit TokenTransfered(_idoTokenAddress, _walletAddress, usdtAmount, calculatedTokens);
 
     }
 
@@ -176,4 +174,9 @@ contract NativeChainPublicSale {
     function setAdmin(address _newOwner) external onlyAdmin {
         adminAddress = _newOwner;
     }
+
+    function getRemainingSupply(address _idoAddress) public view  returns (uint256){
+        return publicSalesIdos[_idoAddress].totalTargetUsdt - publicSalesIdos[_idoAddress].currentRaisedUsdt;
+    }
+
 }
