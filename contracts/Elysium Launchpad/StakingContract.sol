@@ -1,426 +1,275 @@
-// SPDX-License-Identifier: UNLICENSED
-
-/*
-*Elysium.launchpad
-*Decentralized Incubator
-*A disruptive blockchain incubator program / decentralized seed stage fund, empowered through DAO based community-involvement mechanisms
-*/
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-pragma experimental ABIEncoderV2;
 import "contracts/Elysium Launchpad/libraries.sol";
 
-//SeedifyFundsContract
-
-contract ElysiumLaunchpadIDOContract is AccessControl,
-    ReentrancyGuard,
-    Pausable {
+contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
-    //token attributes
-    string public constant NAME = "Elysium.launchpad"; //name of the contract
-    uint256 public  totalBUSDReceivedInAllTier;
-    using Address for address payable;
-    bytes32 public constant WHITELISTER_ROLE = keccak256("WHITELISTER_ROLE");
-    bytes32 public constant CONFIRMATION_ROLE = keccak256("CONFIRMATION_ROLE");
-    bool public withdraw = false;
-    // Vulcan fee Wallet
-    // address payable private VulcanWallet;
-    // token address and this is used in buyToken
-    IERC20 public ERC20Interface;
-    //address public tokenAddress;
-    // IDO Token
-    IERC20 public IDOTokenInterface;
-    //address public IDOTokenAddress;
-    uint256 public totalParticipants;
-  // struct to store buyAmount and claimed status
-    struct buyTiersParams {
-    uint256 buyAmount;
-    bool claimed;
-}
+    IERC20 public pyrToken= IERC20(0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d);
 
-    mapping(uint8 => uint256) public totalBUSDReceivedInTier; // total BUSD received in each tier
-    mapping(uint8 => uint256) public maxAllocaPerUser; // max allocation per user for each tier
-    mapping(uint8 => uint256) public totalUserInTier; // total number of users in each tier   
-    mapping(uint8 => mapping(address => bool)) public whitelistByTier;//total users per tier
-    mapping(uint8 => mapping(address => buyTiersParams)) public buyInTier;//mapping to store user purchases and claim status for each tier
-    mapping(address => bool) public refundWallet;
-    uint256 public totalRefund = 0;
-    uint public lockDuration = 48 hours; 
+    struct StakedHistory {
+        uint256 amount;
+        uint256 startTime;
+        uint256 endTime;
+    }
 
     struct ConfirmationData {
-    bool isConfirmed;
-    uint256 timestamp;
+        bool isConfirmed;
+        uint256 timestamp;
     }
 
-    // Mapping to store confirmation data for each address
-    mapping(address => ConfirmationData) public confirmations;
-    address[] public confirmationWalletAddresses;
-    mapping(bytes => bool) public isCancelled; 
+    bytes32 public constant CONFIRMATION_ROLE = keccak256("CONFIRMATION_ROLE");
 
-    // Signature to tokenId to true/false
-    mapping(bytes => mapping(uint256 => bool)) public isCancelledBatch; 
-    mapping(string=>TimeLock) TLs;
+    mapping(uint8 => mapping(address => StakedHistory)) public usersInTier;
+    mapping(address => uint8) public usersTier; // tier of user
+    mapping(uint8 => uint256) public totalUsersInTier;
+    mapping(uint8 => uint256) public totalStakedAmountInTier;
+    mapping(string => TimeLock) public TLs;
+    uint256 public ownerFunctionsDuration = 1 minutes; //48 hours;
+    address[] public confirmationWalletAddresses;
+    mapping(address => ConfirmationData) public confirmations;
 
     struct TimeLock {
-    uint256 releaseTime;
-    bool isActive;
+        uint256 releaseTime;
+        bool isActive;
     }
-
-
-    // Withdraw Ether From Contract Event
-         event withdrawEth(
-         string message,
-         uint256 amount,
-         address recipient
+    uint256 public lockTime = 14 days;//14 days; // right from contract deployment
+    uint256 public claimTime;
+    bool public isStopped;
+    mapping(uint8 => uint256) public tierStakeAmounts;
+    uint256 tierCount;
+    event Staked(
+        address indexed user,
+        uint8 tier,
+        uint256 amount,
+        uint256 startTime,
+        uint256 endTime
+    );
+    event Withdrawn(address indexed user, uint8 tier, uint256 amount);
+    event StakingStopped(bool status, uint256 time);
+    event setOwnerFunctionDuration(uint256);
+    event WalletAddressUpdated(
+        address indexed oldWalletAddress,
+        address indexed newWalletAddress
     );
 
-    // Withdraw Tokens From Contract Event
-         event withdrawToken(
-         string message,
-         uint256 amount,
-         address recipient
-    );
-
-    // Withdraw NFTs From Contract Event
-         event activateWithdrawNFT(
-         string message
-    );
-         event withdrawNFT(
-         string message,
-         uint256 tokenId,
-         address recipient
-
-    );
-    // Modifier to restrict access to functions with the whitelister role
-    modifier onlyWhitelisterRole() {
+    constructor(uint256 tierOneAmount,uint256 tierTwoAmount, uint256 tierThreeAmount) {
+        // pyrToken = IERC20(0xa801b1A7846156d4C81bD188F96bfcb621517611);
+        tierStakeAmounts[1] = tierOneAmount ;
+        tierStakeAmounts[2] = tierTwoAmount ;
+        tierStakeAmounts[3] = tierThreeAmount ;
+        tierCount = 3;
+        claimTime = block.timestamp + lockTime;
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+    modifier onlyOwnerRole() {
         require(
-            hasRole(WHITELISTER_ROLE, _msgSender()),
-            "Caller is not in the whitelister role"
+            hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
+            "Caller is not in the Owner role"
         );
         _;
     }
-     modifier onlyConfirmationRole() {
+    modifier onlyConfirmationRole() {
         require(
             hasRole(CONFIRMATION_ROLE, _msgSender()),
             "Caller does not have confirmation role"
         );
         _;
     }
-    modifier onlyContractCreator() {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not the contract creator");
-        _;
+
+    function changeStakingStatus(bool _status) external onlyOwnerRole {
+        //onlyOwner
+        isStopped = _status;
+        emit StakingStopped(_status, block.timestamp);
     }
 
-
-//Event
-    event Claim(address claimer, uint256 amount);
-    event Refund(address refundWallets, uint256 amount);
-
-    //struct for constructor 
-    struct ParamsConstructor {
-     uint256 maxCap; // Max cap in BUSD
-     uint256  saleStartTime; // start sale time
-     uint256  saleEndTime; // end sale time
-     address payable  projectOwner; // project Owner
-     // max cap per tier
-     uint256  tierOneMaxCap;
-     uint256  tierTwoMaxCap;
-     uint256  tierThreeMaxCap;
-     //min allocation per user in a tier
-     uint256  minAllocaPerUserTierOne;
-     uint256  minAllocaPerUserTierTwo;
-     uint256  minAllocaPerUserTierThree;
-     uint256 IdoTokenPrice; //IDO Token Price
-     address IDOTokenAddress; // IDO Token
-     address tokenAddress;  // token address and this is used in buyToken
-    }
-    struct Params {
-    uint256 maxCap; // Max cap in BUSD
-    uint256 saleStartTime; // start sale time
-    uint256 saleEndTime; // end sale time
-    address payable projectOwner; // project Owner
-    mapping(uint8 => uint256) minAllocaPerUserTier; // min allocation per user in a tier
-    uint256 IdoTokenPrice; //IDO Token Price
-    address IDOTokenAddress; // IDO Token
-    address tokenAddress;  // token address and this is used in buyToken
-    }
-    Params public Parameters;
-    // CONSTRUCTOR
-    //["2500000000000000000000000",1712663040,1712672720,"0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1","20000000000","20000000000","20000000000","10000000","10000000","10000000",5000,"0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d","0x441844CA350364b7eC75873E411c90A2C414D63d","0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1"]
-     constructor(
-    ParamsConstructor memory _parameters
-    ) {
-    Parameters.maxCap = _parameters.maxCap;
-    Parameters.saleStartTime = _parameters.saleStartTime;
-    Parameters.saleEndTime = _parameters.saleEndTime;
-    Parameters.projectOwner = _parameters.projectOwner;
-    maxAllocaPerUser[1] = _parameters.tierOneMaxCap;
-    maxAllocaPerUser[2] = _parameters.tierTwoMaxCap;
-    maxAllocaPerUser[3] = _parameters.tierThreeMaxCap;
-    Parameters.minAllocaPerUserTier[1] = _parameters.minAllocaPerUserTierOne;
-    Parameters.minAllocaPerUserTier[2] = _parameters.minAllocaPerUserTierTwo;
-    Parameters.minAllocaPerUserTier[3] = _parameters.minAllocaPerUserTierThree;
-    Parameters.IdoTokenPrice = _parameters.IdoTokenPrice;
-    Parameters.IDOTokenAddress = _parameters.IDOTokenAddress;
-    Parameters.tokenAddress = _parameters.tokenAddress;  
-   _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-   _grantRole(WHITELISTER_ROLE, msg.sender);
+    function setTierStakeAmount(uint8 tier, uint256 amount)
+        external
+        onlyOwnerRole
+    {
+        //onlyOwner
+        require(tier >= 1 , "Invalid tier");
+        tierStakeAmounts[tier] = amount;
+        tierCount++;
     }
 
-    //function to claimTokens by User
-    function ClaimTokens() public nonReentrant{
-       (bool userWhitelisted, uint8 userTier) = isWhitelistedInAnyTier(msg.sender);
-        require(userWhitelisted == true, "Claimer Should be Whitelisted");
-        require(refundWallet[msg.sender]==false,"You can only take refund");
-        require(Parameters.saleEndTime <= block.timestamp , "Sale Is not ended");
-        require(Parameters.IdoTokenPrice!= 0, "IDO Token Price Not Added Yet!");
-        IDOTokenInterface = IERC20(Parameters.IDOTokenAddress);
-        if(buyInTier[userTier][msg.sender].buyAmount!=0){
-            require( buyInTier[userTier][msg.sender].claimed == false, "You Have Claimed Tokens");   // New require statement
-            uint256 amount = (buyInTier[userTier][msg.sender].buyAmount * Parameters.IdoTokenPrice) / 100;
-            uint256 returnAmount = amount *(10**12);
-            buyInTier[userTier][msg.sender].claimed = true;   // updated claimed value against the msg.sender
-            IDOTokenInterface.safeTransferFrom(Parameters.projectOwner, msg.sender, returnAmount);
-            emit Claim(msg.sender, amount);
-        } 
-         else {
-             revert("No Purchase");
-        }
+    function stake(uint8 tier) external nonReentrant {
+        require(!isStopped, "Staking paused");
+        require(block.timestamp <  claimTime,"Can't lock!");
+        require(tier >= 1, "Invalid tier");
+        require(usersTier[msg.sender] == 0, "User has already staked");
+        require(tierStakeAmounts[tier] > 0, "Tier not available for staking");
+        uint256 stakeAmount = tierStakeAmounts[tier];
+        require(
+            pyrToken.balanceOf(msg.sender) >= stakeAmount,
+            "Insufficient balance"
+        );
+        // Transfer tokens to the contract
+        _payMe(msg.sender, stakeAmount);
+        // Record staking details
+        usersInTier[tier][msg.sender] = StakedHistory({
+            amount: stakeAmount,
+            startTime: block.timestamp,
+            endTime: claimTime //block.timestamp + lockTime
+        });
+        // Update total users and total staked amount in the tier
+        totalUsersInTier[tier]++;
+        totalStakedAmountInTier[tier] += stakeAmount;
+        // Set user's tier
+        usersTier[msg.sender] = tier;
 
+        emit Staked(msg.sender, tier, stakeAmount, block.timestamp, claimTime);
     }
 
-    //function to refund by User
-    function refund() public nonReentrant{
-       (bool userWhitelisted, uint8 userTier) = isWhitelistedInAnyTier(msg.sender);
-        require(userWhitelisted == true, "User trying to refund should be Whitelisted");
-        require(Parameters.saleEndTime <= block.timestamp , "Sale Is not ended");
-        require (refundWallet[msg.sender] = true, "This user cannot refund");
-        ERC20Interface = IERC20(Parameters.tokenAddress);
-        if(buyInTier[userTier][msg.sender].buyAmount!=0){
-            require( buyInTier[userTier][msg.sender].claimed == false, "You Have Claimed Tokens");   // New require statement
-            uint256 amount = buyInTier[userTier][msg.sender].buyAmount; 
-            //convertion from 18 to 6
-            buyInTier[userTier][msg.sender].claimed = true;   // updated claimed value against the msg.sender
-            ERC20Interface.safeTransfer(msg.sender,amount);
-            totalRefund = totalRefund - amount;
-
-            emit Refund(msg.sender, amount);
-        } 
-         else {
-             revert("No Purchase");
-        }
-
-    }
-
-    function addToRefundWallets(address[] memory addr)external nonReentrant onlyContractCreator {
-    for (uint8 i = 0; i <addr.length; i++) {
-       refundWallet[addr[i]]= true;
-       (,uint8 userTier) = isWhitelistedInAnyTier(addr[i]);
-        uint256 amount = buyInTier[userTier][addr[i]].buyAmount; 
-        totalRefund = totalRefund + amount;
-    }
-    
+    function hasStaked(address user) external view returns (bool) {
+        return usersTier[user] > 0;
     }
 
 
 
-    //Raised Amount Withdraw function
-    function Withdraw() public onlyContractCreator nonReentrant  returns(bool) {
-       // Set the confirmation threshold (e.g., 2 out of 3)
-    uint256 confirmationThreshold = 3;
-    uint256 confirmationsCount = 0;
-    uint256 confirmationWalletCount = confirmationWalletAddresses.length;
+    function withdraw() external nonReentrant {
+        require(usersTier[msg.sender] > 0, "User has not staked");
 
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        if (
-            confirmations[confirmationWalletAddresses[i]].isConfirmed 
-        ) {
-            confirmationsCount++;
-            if (confirmationsCount >= confirmationThreshold) {
-                break;
-            }
-        }
-    }
-    require(confirmationsCount >= confirmationThreshold, "Less confirmations");
-        require(Parameters.saleEndTime <= block.timestamp , "Sale not ended");
-        ERC20Interface = IERC20(Parameters.tokenAddress);
-        uint256 totalRaised = ERC20Interface.balanceOf(address(this));
-        require(withdraw == false, "Amount already Witdrawed");
-     
-        uint256 actualAmount = totalRaised - totalRefund;
-        withdraw = true;
-        
-        ERC20Interface.transfer(Parameters.projectOwner, actualAmount);
+        uint8 tier = usersTier[msg.sender];
+        StakedHistory storage userStake = usersInTier[tier][msg.sender];
+        require(block.timestamp >= claimTime, "still locked!");
+        // Update total users and total staked amount in the tier
+        totalUsersInTier[tier]--;
+        totalStakedAmountInTier[tier] -= userStake.amount;
 
-     // Reset Confirmations
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        confirmations[confirmationWalletAddresses[i]] = ConfirmationData(false, 0);
+        // Transfer tokens back to the user
+        _payDirect(msg.sender, userStake.amount);
+
+        // Clear staking details
+        delete usersInTier[tier][msg.sender];
+        usersTier[msg.sender] = 0;
+
+        emit Withdrawn(msg.sender, tier, userStake.amount);
     }
 
-        return withdraw;
+    function _payMe(address payer, uint256 amount) private {
+        _payTo(payer, address(this), amount);
     }
 
-
-    function getWithdrawBool() public view returns(bool) {
-        return withdraw;
+    function _payTo(
+        address allower,
+        address receiver,
+        uint256 amount
+    ) private _hasAllowance(allower, amount) {
+        pyrToken.safeTransferFrom(allower, receiver, amount);
     }
 
-
-    function setWithdrawBool() public onlyContractCreator{
-        require(withdraw == true, "Already False");
-        withdraw = false;
+    function _payDirect(address to, uint256 amount) private {
+        pyrToken.safeTransfer(to, amount);
     }
 
     modifier _hasAllowance(address allower, uint256 amount) {
-        require(Parameters.tokenAddress != address(0), "Puschasing Token Can not be zero");
-        ERC20Interface = IERC20(Parameters.tokenAddress);
-        uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
+        // Make sure the allower has provided the right allowance.
+        uint256 ourAllowance = pyrToken.allowance(allower, address(this));
         require(amount <= ourAllowance, "Make sure to add enough allowance");
         _;
     }
-    event tokensBought (address userAddress,uint8 userTier,uint256 boughtAmount,uint256 buyTime);
 
+    function getTotalStakedAmount() external view returns (uint256) {
+        uint256 totalStaked = 0;
+        for (uint8 i = 1; i <= tierCount; i++) {
+            totalStaked += totalStakedAmountInTier[i];
+        }
+        return totalStaked;
+    }
 
-    function buyTokens(uint256 amount)//15000000000000000000
+    function activeEmergencyWithdrawERC20() external onlyOwnerRole {
+        TLs["EmergencyWithdrawERC20"].releaseTime =
+            block.timestamp +
+            (ownerFunctionsDuration);
+        TLs["EmergencyWithdrawERC20"].isActive = true;
+    }
+
+    // Function to withdraw erc20 funds from contract if any, incase of emergency
+    function emergencyWithdrawERC20(address userAddress)
         external
-        returns (bool)
+        onlyOwnerRole
     {
-        ERC20Interface = IERC20(Parameters.tokenAddress);
-        require(amount != 0 , "Buy Amount Cannot be Zero!");
-        require(block.timestamp >= Parameters.saleStartTime, "The sale is not started yet "); // solhint-disable
-        require(block.timestamp <= Parameters.saleEndTime, "The sale is closed"); // solhint-disable
-        // require(
-        //     totalBUSDReceivedInAllTier + amount <= Parameters.maxCap,
-        //     "buyTokens: purchase would exceed max cap"
-        // );
-       (bool userWhitelisted, uint8 userTier) = isWhitelistedInAnyTier(msg.sender);
-        if (userWhitelisted) {
-            buyInTier[userTier][msg.sender].buyAmount += amount;
-            require(
-                buyInTier[userTier][msg.sender].buyAmount >= Parameters.minAllocaPerUserTier[userTier],
-                "your purchasing Power is so Low"
-            );
-            // require(
-            //     totalBUSDReceivedInTier[userTier] + amount <= Parameters.tierMaxCap[userTier],
-            //     "buyTokens: purchase would exceed Tier one max cap"
-            // );
-            require(
-                buyInTier[userTier][msg.sender].buyAmount <= maxAllocaPerUser[userTier],
-                "buyTokens:You are investing more than your tier-1 limit!"
-            );
-            totalBUSDReceivedInAllTier += amount;
-            totalBUSDReceivedInTier[userTier] += amount;
-            ERC20Interface.safeTransferFrom(msg.sender, address(this), amount); //changes to transfer BUSD to owner
-            emit tokensBought (msg.sender,userTier,amount,block.timestamp);
-        }  else {
-            revert("Not whitelisted");
+        // Set the confirmation threshold (e.g., 2 out of 3)
+        uint256 confirmationThreshold = 3;
+
+        // Check if enough confirmation wallets have confirmed
+        uint256 confirmationsCount;
+        uint256 release = TLs["EmergencyWithdrawERC20"].releaseTime;
+        uint256 confirmationWalletCount = confirmationWalletAddresses.length;
+
+        require(
+            release > 0 && release <= block.timestamp,
+            "Time lock not expired"
+        );
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            if (
+                confirmations[confirmationWalletAddresses[i]].isConfirmed &&
+                confirmations[confirmationWalletAddresses[i]].timestamp >
+                release - (ownerFunctionsDuration) &&
+                confirmations[confirmationWalletAddresses[i]].timestamp <=
+                release
+            ) {
+                if (++confirmationsCount >= confirmationThreshold) {
+                    break;
+                }
+            }
         }
-        
-        return true;
-    }
-    // Function to update total BUSD received in a specific tier
-    function updateTotalBUSDReceivedInTier(uint8 tier, uint256 amount) internal onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
-    totalBUSDReceivedInTier[tier] += amount;
-    }
+
+        require(
+            confirmationsCount >= confirmationThreshold,
+            "Less confirmations or invalid confirmation time"
+        );
+
+        // FUNCTION LOGIC
+
+        require(usersTier[userAddress] > 0, "User has not staked");
+        uint8 tier = usersTier[userAddress];
+        StakedHistory storage user = usersInTier[tier][userAddress];
+        _payDirect(userAddress, user.amount);
+
+        // Update total users and total staked amount in the tier
+        totalUsersInTier[tier]--;
+        totalStakedAmountInTier[tier] -= user.amount;
+
+        // Clear staking details
+        delete usersInTier[tier][userAddress];
+        usersTier[userAddress] = 0;
+
  
-    // Function to set the max allocation per user for a specific tier
-    function setMaxAllocaPerUser(uint8 tier, uint256 maxAllocation)  external onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
-    maxAllocaPerUser[tier] = maxAllocation;
-    }
-    
-    // Function to update the total number of users in a specific tier
-    function updateTotalUserInTier(uint8 tier, uint256 totalUsers) internal onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
-    totalUserInTier[tier] = totalUsers;
-    }
-    // Function to update the buyAmount and claimed status for a specific tier and user
-    function updateBuyParams(uint8 tier, address user, uint256 buyAmount, bool claimed) internal  {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
-    buyInTier[tier][user] = buyTiersParams(buyAmount, claimed);
-    }
-    // Function to check if the user has bought in any tier and return buy amounts with tiers
-    function getUserBoughtTier(address user) public view returns (uint8 userTier, buyTiersParams memory userParams) {
-    for (uint8 t = 1; t <= 3; t++) {
-        if (buyInTier[t][user].buyAmount > 0) {
-            return (t, buyInTier[t][user]);
+
+        // Reset confirmations
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            confirmations[confirmationWalletAddresses[i]] = ConfirmationData(
+                false,
+                0
+            );
         }
-    }
-    // Return default values if user hasn't bought in any tier
-    return (0, buyTiersParams(0, false));
-    }
-    //function to view IDO Address
-    function getIDOTokenAddress() public view returns(address){
-        return Parameters.IDOTokenAddress;
-    }
-    //set ido tokenPrice
-    function SetIDOTokenPrice(uint256 _tokenPrice) public onlyContractCreator{
-        Parameters.IdoTokenPrice = _tokenPrice;
-    }
-    // Function to add an address to the whitelist for a specific tier
-    function addToWhitelist(uint8 t, address[] memory users) external onlyWhitelisterRole{
-    require(t >= 1 && t <= 3, "Invalid t");
-    for (uint256 i = 0; i < users.length; i++) {
-        address user = users[i];
-        (bool whitelisted,) = isWhitelistedInAnyTier(user);
-        if (!whitelisted) {
-            whitelistByTier[t][user] = true;
-            totalUserInTier[t]++;
-            totalParticipants++;
-        }
-    }
-    // maxAllocaPerUser[t] = Parameters.tierMaxCap[t] / totalUserInTier[t];
-    }
-    function removeFromWhitelist(uint8 tier, address user) external onlyWhitelisterRole{
-        require(tier >= 1 && tier <= 3, "Invalid tier");
-        if (whitelistByTier[tier][user]) {
-            whitelistByTier[tier][user] = false;
-            totalUserInTier[tier]--;
-            totalParticipants--;
-        }
-        // maxAllocaPerUser[tier] = Parameters.tierMaxCap[tier] / totalUserInTier[tier];
-    }
-    // Function to check if an address is whitelisted for a specific tier
-    function isWhitelisted(uint8 tier, address user) public view returns (bool) {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
-    return whitelistByTier[tier][user];
-    }
-    // Function to check if a user is whitelisted in any tier
-    function isWhitelistedInAnyTier(address user) public view returns (bool whitelisted, uint8 tier) {
-    for (uint8 t = 1; t <= 3; t++) {
-        if (isWhitelisted(t, user)) {
-            return (true, t);
-        }
-    }
-    return (false, 0);
+
+        TLs["EmergencyWithdrawERC20"].releaseTime = 0; // Reset time lock
+        TLs["EmergencyWithdrawERC20"].isActive = false;
     }
 
-    function getRemainingSupply () public view returns(uint256 supply){
-        return Parameters.maxCap-totalBUSDReceivedInAllTier;
-    }
+
+    // Function to add confirmation on each time by confirmation wallet
+    function updateCurrentConfirmationStatus() public onlyConfirmationRole {
+        require(_msgSender() != address(0), "Invalid confirmation wallet address");
+        require(
+            isExistConfirmationWallet(_msgSender()),
+            "You are not a confirmation wallet."
+        );
 
     
-    function getMinAllocationPerUserTier(uint8 tier) external view returns (uint256) {
-    require(tier >0  && tier <= 3, "Invalid tier"); 
-    return Parameters.minAllocaPerUserTier[tier];
+        confirmations[msg.sender] = ConfirmationData(true, block.timestamp + 1);
+     
     }
 
-
-    function addNewTier(uint8 _tierNumber, uint256 _maxAllowedPerUser, uint256 _minAllowedPerUser ) public onlyContractCreator {
-    require(_tierNumber > 3 , "New Tier should be greater then 3");
-    maxAllocaPerUser[_tierNumber] = _maxAllowedPerUser;
-    Parameters.minAllocaPerUserTier[_tierNumber] = _minAllowedPerUser;   
-    }
-    
-
-// CONFIRMATION WALLET SETUP
-     function isExistConfirmationWallet(address addr)
+    // Function to check if the wallet address exist in confirmation list wallet or not
+    function isExistConfirmationWallet(address addr)
         public
         view
-        returns (bool)
+        returns (bool status)
     {
-        
         for (uint256 i = 0; i < confirmationWalletAddresses.length; i++) {
             if (confirmationWalletAddresses[i] == addr) {
                 return true; // Sender exists in the array
@@ -429,179 +278,210 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
         return false; // Sender does not exist in the array
     }
 
+    // Function to add wallet address in confirmation list wallet
+    function addConfirmationWallet(address _confirmationWallet)
+        external
+        onlyOwnerRole
+    {
+        require(
+            _confirmationWallet != address(0),
+            "Invalid confirmation wallet address"
+        );
+        require(
+            confirmationWalletAddresses.length < 5,
+            "Maximum number of confirmation wallets reached"
+        );
 
-// Function to add a new confirmation wallet
+        bool isExist = isExistConfirmationWallet(_confirmationWallet);
+        require(!isExist, "Wallet already exists!");
 
-    function addConfirmationWallet(address _confirmationWallet) external onlyContractCreator {
-    require(_confirmationWallet != address(0), "Invalid confirmation wallet address");
-    require(confirmationWalletAddresses.length < 5, "Maximum number of confirmation wallets reached");
-    require(!isExistConfirmationWallet(_confirmationWallet), "Wallet already exists!");
-
-    confirmationWalletAddresses.push(_confirmationWallet);
-    confirmations[_confirmationWallet] = ConfirmationData(false, 0);
-    grantRole(CONFIRMATION_ROLE, _confirmationWallet);
+        confirmationWalletAddresses.push(_confirmationWallet);
+        confirmations[_confirmationWallet] = ConfirmationData(false, 0);
+        grantRole(CONFIRMATION_ROLE, _confirmationWallet);
     }
 
-
- // CHANGE CONFIRMATION WALLET
-function activeChangeConfirmationWallet() external onlyContractCreator {
-    TLs["changeConfirmationWallet"].releaseTime = block.timestamp + lockDuration;
-    TLs["changeConfirmationWallet"].isActive = true; 
-}
-
-// Function to change the confirmation wallet address
-function changeConfirmationWallet(address _newConfirmationWallet, address _oldConfirmationWallet) external onlyContractCreator {
-
-    checkAndResetConfirmations("changeConfirmationWallet", 3, lockDuration);
-    // FUNCTION LOGIC
-    require(_newConfirmationWallet != address(0), "Invalid confirmation wallet address");
-    require(confirmationWalletAddresses.length <= 5, "Maximum number of confirmation wallets reached");
-    require(!isExistConfirmationWallet(_newConfirmationWallet), "New wallet already exists!");
-    require(isExistConfirmationWallet(_oldConfirmationWallet), "Old wallet does not exist!");
-    uint256 confirmationWalletCount = confirmationWalletAddresses.length;
-
-    // Revoke the CONFIRMATION_ROLE from the old confirmation wallet
-    revokeRole(CONFIRMATION_ROLE, _oldConfirmationWallet);
-
-    // Update the confirmation wallet address
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        if (confirmationWalletAddresses[i] == _oldConfirmationWallet) {
-            confirmationWalletAddresses[i] = _newConfirmationWallet;
-            delete confirmations[_oldConfirmationWallet];
-            break;
-        }
+    function activeOwnerFunctionDuration() external onlyOwnerRole {
+        TLs["OwnerFunctionDuration"].releaseTime =
+            block.timestamp +
+            (ownerFunctionsDuration);
+        TLs["OwnerFunctionDuration"].isActive = true;
     }
 
-    // Grant the CONFIRMATION_ROLE to the new confirmation wallet
-    grantRole(CONFIRMATION_ROLE, _newConfirmationWallet);
+    function OwnerFunctionDuration(uint256 _hours) external onlyOwnerRole {
+        uint256 confirmationThreshold = 3;
 
-}
-
-
-// Function to update the confirmation status
-    function updateCurrentConfirmationStatus() external onlyConfirmationRole {
-    require(isExistConfirmationWallet(msg.sender), "You are not a confirmation wallet.");
-
-    // Store the confirmation timestamp
-    confirmations[msg.sender].isConfirmed = true;
-    confirmations[msg.sender].timestamp = block.timestamp;
-}
-
-
-
-    function setLockDuration(uint _hours) external onlyContractCreator {
-    // Set the confirmation threshold (e.g., 2 out of 3)
-    uint256 confirmationThreshold = 3;
-    uint256 confirmationsCount = 0;
-    uint256 confirmationWalletCount = confirmationWalletAddresses.length;
-
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        if (
-            confirmations[confirmationWalletAddresses[i]].isConfirmed 
-        ) {
-            confirmationsCount++;
-            if (confirmationsCount >= confirmationThreshold) {
-                break;
+        // Check if enough confirmation wallets have confirmed
+        uint256 confirmationsCount = 0;
+        uint256 release = TLs["OwnerFunctionDuration"].releaseTime;
+        uint256 confirmationWalletCount = confirmationWalletAddresses.length;
+        require(
+            release > 0 && release <= block.timestamp,
+            "Time lock not expired"
+        );
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            if (
+                confirmations[confirmationWalletAddresses[i]].isConfirmed &&
+                confirmations[confirmationWalletAddresses[i]].timestamp >
+                release - (ownerFunctionsDuration) &&
+                confirmations[confirmationWalletAddresses[i]].timestamp <=
+                release
+            ) {
+                confirmationsCount++;
+                if (confirmationsCount >= confirmationThreshold) {
+                    break;
+                }
             }
         }
-    }
-    require(confirmationsCount >= confirmationThreshold, "Less confirmations");
-    
-    lockDuration = _hours * 1 hours; // Convert hours to seconds
 
+        require(
+            confirmationsCount >= confirmationThreshold,
+            "Less confirmations or invalid confirmation time"
+        );
 
-    // Reset Confirmations
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        confirmations[confirmationWalletAddresses[i]] = ConfirmationData(false, 0);
-    }
-    }
+        // Function Logic
+        ownerFunctionsDuration = _hours * 1 hours;
 
+        // Reset Confirmations and Time Lock
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            confirmations[confirmationWalletAddresses[i]] = ConfirmationData(
+                false,
+                0
+            );
+        }
 
-       function activeWithdrawEther() external onlyContractCreator {
-    TLs["withdrawEther"].releaseTime = block.timestamp + lockDuration;
-    TLs["withdrawEther"].isActive = true;
-    }
+        TLs["OwnerFunctionDuration"].releaseTime = 0;
+        TLs["OwnerFunctionDuration"].isActive = false;
 
-
-    function withdrawEther(address payable recipient) external onlyContractCreator nonReentrant {
-    require(recipient != address(0), "Invalid recipient address");
-    checkAndResetConfirmations("withdrawEther", 3, lockDuration );
-    recipient.sendValue(address(this).balance);
-    emit withdrawEth("Owner withdrawed the ether present in marketplace.", address(this).balance, recipient);
-
-}
-
-
-
-
-    function activeWithdrawTokens() external onlyContractCreator {
-    TLs["withdrawTokens"].releaseTime = block.timestamp + lockDuration;
-    TLs["withdrawTokens"].isActive = true;
-
+        emit setOwnerFunctionDuration(ownerFunctionsDuration);
     }
 
-
-  function withdrawTokens(address tokenAddress, uint256 amount, address recipient) external onlyContractCreator nonReentrant {
-    require(recipient != address(0), "Invalid recipient address");
-    checkAndResetConfirmations("withdrawTokens", 3, lockDuration);
-    IERC20 token = IERC20(tokenAddress);
-    uint256 balance = token.balanceOf(address(this));
-    require(balance >= amount, "Insufficient token balance");
-    token.safeTransfer(recipient, amount);
-    emit withdrawToken("Owner withdrawed Tokens received on marketplace", amount, recipient);
-}
-
-
-    function activeWithdrawNFT() external onlyContractCreator {
-    TLs["withdrawNFT"].releaseTime = block.timestamp + lockDuration;
-    TLs["withdrawNFT"].isActive = true;
+    function activeUpdateWalletAddress() external onlyOwnerRole {
+        TLs["UpdateWalletAddress"].releaseTime =
+            block.timestamp +
+            (ownerFunctionsDuration);
+        TLs["UpdateWalletAddress"].isActive = true;
     }
 
-   function withdrawNFTs(address nftAddress, uint256 tokenId, address recipient) external onlyContractCreator nonReentrant {
-    require(recipient != address(0), "Invalid recipient address");
-    checkAndResetConfirmations("withdrawNFT", 3, lockDuration);
-    IERC721 nft = IERC721(nftAddress);
-    require(nft.ownerOf(tokenId) == address(this), "NFT not owned by the contract");
-    nft.safeTransferFrom(address(this), recipient, tokenId);
-    emit withdrawNFT("Owner withdrawed NFTs received on Marketplace", tokenId, recipient);
+    function updateWalletAddress(
+        address _oldWalletAddress,
+        address _newWalletAddress
+    ) external onlyOwnerRole {
+        uint256 confirmationThreshold = 3;
 
-}
-
-function checkAndResetConfirmations(
-    string memory timeLockKey,
-    uint256 confirmationThreshold,
-    uint256 confirmationWindow
-) internal {
-    uint256 confirmationsCount = 0;
-    uint256 release = TLs[timeLockKey].releaseTime;
-    uint256 confirmationWalletCount = confirmationWalletAddresses.length;
-
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        if (
-            confirmations[confirmationWalletAddresses[i]].isConfirmed &&
-            confirmations[confirmationWalletAddresses[i]].timestamp > release - confirmationWindow &&
-            confirmations[confirmationWalletAddresses[i]].timestamp <= release
-        ) {
-            confirmationsCount++;
-            if (confirmationsCount >= confirmationThreshold) {
-                break;
+        // Check if enough confirmation wallets have confirmed
+        uint256 confirmationsCount = 0;
+        uint256 release = TLs["UpdateWalletAddress"].releaseTime;
+        uint256 confirmationWalletCount = confirmationWalletAddresses.length;
+        require(
+            release > 0 && release <= block.timestamp,
+            "Time lock not expired"
+        );
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            if (
+                confirmations[confirmationWalletAddresses[i]].isConfirmed &&
+                confirmations[confirmationWalletAddresses[i]].timestamp >
+                release - (ownerFunctionsDuration) &&
+                confirmations[confirmationWalletAddresses[i]].timestamp <=
+                release
+            ) {
+                confirmationsCount++;
+                if (confirmationsCount >= confirmationThreshold) {
+                    break;
+                }
             }
         }
+
+        require(
+            confirmationsCount >= confirmationThreshold,
+            "Less confirmations or invalid confirmation time"
+        );
+
+        // function logic
+
+        require(_oldWalletAddress != address(0), "Invalid old wallet address");
+        require(_newWalletAddress != address(0), "Invalid new wallet address");
+
+        bool isExist = isExistConfirmationWallet(_oldWalletAddress);
+        require(isExist, "Wallet not exists!");
+
+        for (uint256 i = 0; i < confirmationWalletAddresses.length; i++) {
+            if (confirmationWalletAddresses[i] == _oldWalletAddress) {
+                confirmationWalletAddresses[i] = _newWalletAddress;
+
+                confirmations[_oldWalletAddress] = ConfirmationData(false, 0);
+                confirmations[_newWalletAddress] = ConfirmationData(true, 0);
+
+                emit WalletAddressUpdated(_oldWalletAddress, _newWalletAddress);
+                return;
+            }
+        }
+
+        //revert("Old wallet address not found");
+
+        // Reset Confirmations and Time Lock
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            confirmations[confirmationWalletAddresses[i]] = ConfirmationData(
+                false,
+                0
+            );
+        }
+
+        TLs["UpdateWalletAddress"].releaseTime = 0;
+        TLs["UpdateWalletAddress"].isActive = false;
     }
 
-    require(confirmationsCount >= confirmationThreshold, "Less confirmations or invalid confirmation time");
-    require(release > 0 && release <= block.timestamp, "Time lock not expired");
-
-   
-
-    // Reset Confirmations
-    for (uint256 i = 0; i < confirmationWalletCount; i++) {
-        confirmations[confirmationWalletAddresses[i]] = ConfirmationData(false, 0);
+    function activelockTime() external onlyOwnerRole {
+        TLs["lockTime"].releaseTime =
+            block.timestamp +
+            (ownerFunctionsDuration);
+        TLs["lockTime"].isActive = true;
     }
 
-    TLs[timeLockKey].releaseTime = 0;
-    TLs[timeLockKey].isActive = false;
+    function UpdatelockTime(uint256 _days) external onlyOwnerRole {
+        uint256 confirmationThreshold = 3;
+
+        // Check if enough confirmation wallets have confirmed
+        uint256 confirmationsCount = 0;
+        uint256 release = TLs["lockTime"].releaseTime;
+        uint256 confirmationWalletCount = confirmationWalletAddresses.length;
+        require(
+            release > 0 && release <= block.timestamp,
+            "Time lock not expired"
+        );
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            if (
+                confirmations[confirmationWalletAddresses[i]].isConfirmed &&
+                confirmations[confirmationWalletAddresses[i]].timestamp >
+                release - (ownerFunctionsDuration) &&
+                confirmations[confirmationWalletAddresses[i]].timestamp <=
+                release
+            ) {
+                confirmationsCount++;
+                if (confirmationsCount >= confirmationThreshold) {
+                    break;
+                }
+            }
+        }
+
+        require(
+            confirmationsCount >= confirmationThreshold,
+            "Less confirmations or invalid confirmation time"
+        );
+
+        // Function Logic
+        lockTime = _days * 1 days;
+
+        // Reset Confirmations and Time Lock
+        for (uint256 i = 0; i < confirmationWalletCount; i++) {
+            confirmations[confirmationWalletAddresses[i]] = ConfirmationData(
+                false,
+                0
+            );
+        }
+
+        TLs["lockTime"].releaseTime = 0;
+        TLs["lockTime"].isActive = false;
+
+        emit setOwnerFunctionDuration(ownerFunctionsDuration);
+    }
 }
-
-
-    }
