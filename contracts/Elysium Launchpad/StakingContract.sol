@@ -83,6 +83,10 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         emit StakingStopped(_status, block.timestamp);
     }
 
+    function changeClaimTime(uint256 _newClaimTime) public  onlyOwnerRole {
+        claimTime = _newClaimTime;
+    }
+
     function setTierStakeAmount(uint8 tier, uint256 amount)
         external
         onlyOwnerRole
