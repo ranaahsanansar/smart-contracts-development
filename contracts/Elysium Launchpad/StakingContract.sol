@@ -53,8 +53,8 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         address indexed newWalletAddress
     );
 
-    constructor(uint256 tierOneAmount,uint256 tierTwoAmount, uint256 tierThreeAmount) {
-        // pyrToken = IERC20(0xa801b1A7846156d4C81bD188F96bfcb621517611);
+    constructor(uint256 tierOneAmount,uint256 tierTwoAmount, uint256 tierThreeAmount, address _pyrTokenAddress) {
+        pyrToken = IERC20(_pyrTokenAddress);
         tierStakeAmounts[1] = tierOneAmount ;
         tierStakeAmounts[2] = tierTwoAmount ;
         tierStakeAmounts[3] = tierThreeAmount ;
