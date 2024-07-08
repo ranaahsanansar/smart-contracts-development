@@ -46,6 +46,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     mapping(address => bool) public refundWallet;
     uint256 public totalRefund = 0;
     uint public lockDuration = 48 hours; 
+    uint256 tierCount = 0 ;
 
     struct ConfirmationData {
     bool isConfirmed;
@@ -160,6 +161,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     Parameters.minAllocaPerUserTier[1] = _parameters.minAllocaPerUserTierOne;
     Parameters.minAllocaPerUserTier[2] = _parameters.minAllocaPerUserTierTwo;
     Parameters.minAllocaPerUserTier[3] = _parameters.minAllocaPerUserTierThree;
+    tierCount = 3;
     Parameters.IdoTokenPrice = _parameters.IdoTokenPrice;
     Parameters.IDOTokenAddress = _parameters.IDOTokenAddress;
     Parameters.tokenAddress = _parameters.tokenAddress;  
@@ -320,29 +322,29 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     }
     // Function to update total BUSD received in a specific tier
     function updateTotalBUSDReceivedInTier(uint8 tier, uint256 amount) internal onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
+    require(tier >= 1 && tier <= tierCount, "Invalid tier");
     totalBUSDReceivedInTier[tier] += amount;
     }
  
     // Function to set the max allocation per user for a specific tier
     function setMaxAllocaPerUser(uint8 tier, uint256 maxAllocation)  external onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
+    require(tier >= 1 && tier <= tierCount, "Invalid tier");
     maxAllocaPerUser[tier] = maxAllocation;
     }
     
     // Function to update the total number of users in a specific tier
     function updateTotalUserInTier(uint8 tier, uint256 totalUsers) internal onlyContractCreator {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
+    require(tier >= 1 && tier <= tierCount, "Invalid tier");
     totalUserInTier[tier] = totalUsers;
     }
     // Function to update the buyAmount and claimed status for a specific tier and user
     function updateBuyParams(uint8 tier, address user, uint256 buyAmount, bool claimed) internal  {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
+    require(tier >= 1 && tier <= tierCount, "Invalid tier");
     buyInTier[tier][user] = buyTiersParams(buyAmount, claimed);
     }
     // Function to check if the user has bought in any tier and return buy amounts with tiers
     function getUserBoughtTier(address user) public view returns (uint8 userTier, buyTiersParams memory userParams) {
-    for (uint8 t = 1; t <= 3; t++) {
+    for (uint8 t = 1; t <= tierCount; t++) {
         if (buyInTier[t][user].buyAmount > 0) {
             return (t, buyInTier[t][user]);
         }
@@ -373,7 +375,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     // maxAllocaPerUser[t] = Parameters.tierMaxCap[t] / totalUserInTier[t];
     }
     function removeFromWhitelist(uint8 tier, address user) external onlyWhitelisterRole{
-        require(tier >= 1 && tier <= 3, "Invalid tier");
+        require(tier >= 1 && tier <= tierCount, "Invalid tier");
         if (whitelistByTier[tier][user]) {
             whitelistByTier[tier][user] = false;
             totalUserInTier[tier]--;
@@ -383,12 +385,12 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     }
     // Function to check if an address is whitelisted for a specific tier
     function isWhitelisted(uint8 tier, address user) public view returns (bool) {
-    require(tier >= 1 && tier <= 3, "Invalid tier");
+    require(tier >= 1 && tier <= tierCount, "Invalid tier");
     return whitelistByTier[tier][user];
     }
     // Function to check if a user is whitelisted in any tier
     function isWhitelistedInAnyTier(address user) public view returns (bool whitelisted, uint8 tier) {
-    for (uint8 t = 1; t <= 3; t++) {
+    for (uint8 t = 1; t <= tierCount; t++) {
         if (isWhitelisted(t, user)) {
             return (true, t);
         }
@@ -402,7 +404,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
 
     
     function getMinAllocationPerUserTier(uint8 tier) external view returns (uint256) {
-    require(tier >0  && tier <= 3, "Invalid tier"); 
+    require(tier >0  && tier <= tierCount, "Invalid tier"); 
     return Parameters.minAllocaPerUserTier[tier];
     }
 
