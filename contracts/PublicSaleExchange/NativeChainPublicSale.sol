@@ -34,6 +34,7 @@ contract NativeChainPublicSale {
         uint256 totalTargetUsdt;
         uint256 currentRaisedUsdt;
         uint256 maxAllowedUsdtPerWallet;
+        uint256 minAllowedUsdt;
         uint256 fromDate;
         uint256 toDate;
         bool isLive;
@@ -60,7 +61,10 @@ contract NativeChainPublicSale {
         address indexed idoAddress,
         address indexed walletAddress,
         uint256 usdtAmount,
-        uint256 tokenAmount
+        uint256 tokenAmount,
+        uint256 currentRaisedUsdt,
+        uint256 currentSoldTokens,
+        uint256 reamingSupplyUsdt
     );
 
     constructor(
@@ -106,6 +110,7 @@ contract NativeChainPublicSale {
             publicSalesIdos[_idoTokenAddress].priceUsdt != 0,
             "This ido set to invalid price"
         );
+        require(publicSalesIdos[_idoTokenAddress].minAllowedUsdt <= _amountUsdt, "Invalid minimum amount");
         // Determine the conversion factor
         uint256 conversionFactor = 10 **
             (publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS - USDT_DECIMALS);
@@ -135,11 +140,18 @@ contract NativeChainPublicSale {
             "Failed to transfer ido tokens"
         );
 
+        uint256 raminingSupply = publicSalesIdos[_idoTokenAddress].totalTargetUsdt - publicSalesIdos[_idoTokenAddress].currentRaisedUsdt;
+        uint256 totalTokenSoldByIdo =  totalTokenSold[_idoTokenAddress];
+        uint256 currentRaisedUsdtByIdo = publicSalesIdos[_idoTokenAddress].currentRaisedUsdt;
+
         emit TokenTransfered(
             _idoTokenAddress,
             msg.sender,
             _amountUsdt,
-            calculatedTokens
+            calculatedTokens,
+            currentRaisedUsdtByIdo,
+            totalTokenSoldByIdo,
+            raminingSupply
         );
     }
 
@@ -158,7 +170,8 @@ contract NativeChainPublicSale {
         uint256 _fromDate,
         uint256 _toDate,
         uint8 _decimals,
-        uint256 _maxAllowed
+        uint256 _maxAllowed,
+        uint256 _minAllowed
     ) public onlyAdmin {
         require(
             publicSalesIdos[_idoTokenAddress].toDate == 0,
@@ -171,6 +184,7 @@ contract NativeChainPublicSale {
             _targetUsdt,
             0,
             _maxAllowed,
+            _minAllowed,
             _fromDate,
             _toDate,
             false,
@@ -185,12 +199,14 @@ contract NativeChainPublicSale {
         uint256 _priceUsdt,
         uint256 _targetUsdt,
         uint8 _decimals,
-        uint256 _maxAllowed
+        uint256 _maxAllowed,
+        uint256 _minAllowed
     ) public onlyAdmin {
         publicSalesIdos[_idoTokenAddress].priceUsdt = _priceUsdt;
         publicSalesIdos[_idoTokenAddress].totalTargetUsdt = _targetUsdt;
         publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS = _decimals;
         publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet = _maxAllowed;
+        publicSalesIdos[_idoTokenAddress].minAllowedUsdt = _minAllowed;
     }
 
     function deleteIdo(address _idoTokenAddress) public onlyAdmin {
@@ -257,11 +273,22 @@ contract NativeChainPublicSale {
             "Failed to transfer ido tokens"
         );
 
+        publicSalesIdos[_idoTokenAddress].currentRaisedUsdt += usdtAmount;
+        totalTokenSold[_idoTokenAddress] += calculatedTokens;
+        totalSpendUsdtPerWallet[_idoTokenAddress][_walletAddress] += usdtAmount;
+        tokenBalance[_idoTokenAddress][_walletAddress] += calculatedTokens;
+
+        uint256 raminingSupply = publicSalesIdos[_idoTokenAddress].totalTargetUsdt - publicSalesIdos[_idoTokenAddress].currentRaisedUsdt;
+        uint256 totalTokenSoldByIdo =  totalTokenSold[_idoTokenAddress];
+        uint256 currentRaisedUsdtByIdo = publicSalesIdos[_idoTokenAddress].currentRaisedUsdt;
         emit TokenTransfered(
             _idoTokenAddress,
             _walletAddress,
             usdtAmount,
-            calculatedTokens
+            calculatedTokens,
+            currentRaisedUsdtByIdo,
+            totalTokenSoldByIdo,
+            raminingSupply
         );
     }
 
