@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 // helper methods for interacting with ERC20 tokens that do not consistently return true/false
 library TransferHelper {

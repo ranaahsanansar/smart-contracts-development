@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "contracts/Elysium Launchpad/libraries.sol";
+import "contracts/Elysium Launchpad/UpgradebleContracts/libraries.sol";
 
-contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
+contract ElysiumLaunchpadIDOStaking_upgradeable is
+    Initializable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
-    IERC20 public pyrToken= IERC20(0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d);
+    IERC20 public pyrToken = IERC20(0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d);
 
     struct StakedHistory {
         uint256 amount;
@@ -33,7 +38,7 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         uint256 releaseTime;
         bool isActive;
     }
-    uint256 public lockTime = 14 days;//14 days; // right from contract deployment
+    uint256 public lockTime = 14 days; //14 days; // right from contract deployment
     uint256 public claimTime;
     bool public isStopped;
     mapping(uint8 => uint256) public tierStakeAmounts;
@@ -53,15 +58,43 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         address indexed newWalletAddress
     );
 
-    constructor(uint256 tierOneAmount,uint256 tierTwoAmount, uint256 tierThreeAmount, address _pyrTokenAddress) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        uint256 tierOneAmount,
+        uint256 tierTwoAmount,
+        uint256 tierThreeAmount,
+        address _pyrTokenAddress
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __AccessControl_init();
         pyrToken = IERC20(_pyrTokenAddress);
-        tierStakeAmounts[1] = tierOneAmount ;
-        tierStakeAmounts[2] = tierTwoAmount ;
-        tierStakeAmounts[3] = tierThreeAmount ;
+        tierStakeAmounts[1] = tierOneAmount;
+        tierStakeAmounts[2] = tierTwoAmount;
+        tierStakeAmounts[3] = tierThreeAmount;
         tierCount = 3;
         claimTime = block.timestamp + lockTime;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
+
+    // constructor(
+    //     uint256 tierOneAmount,
+    //     uint256 tierTwoAmount,
+    //     uint256 tierThreeAmount,
+    //     address _pyrTokenAddress
+    // ) {
+    // pyrToken = IERC20(_pyrTokenAddress);
+    // tierStakeAmounts[1] = tierOneAmount;
+    // tierStakeAmounts[2] = tierTwoAmount;
+    // tierStakeAmounts[3] = tierThreeAmount;
+    // tierCount = 3;
+    // claimTime = block.timestamp + lockTime;
+    // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    // }
+
     modifier onlyOwnerRole() {
         require(
             hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
@@ -83,7 +116,14 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         emit StakingStopped(_status, block.timestamp);
     }
 
-    function changeClaimTime(uint256 _newClaimTime) public  onlyOwnerRole {
+    // dummy function to check upgradeability 
+    // function updateStakingStatus(bool _status) external onlyOwnerRole {
+    //     //onlyOwner
+    //     isStopped = _status;
+    //     emit StakingStopped(_status, block.timestamp);
+    // }
+
+    function changeClaimTime(uint256 _newClaimTime) public onlyOwnerRole {
         claimTime = _newClaimTime;
     }
 
@@ -92,20 +132,14 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         onlyOwnerRole
     {
         //onlyOwner
-        require(tier >= 1 , "Invalid tier");
+        require(tier >= 1, "Invalid tier");
         tierStakeAmounts[tier] = amount;
-    }
-
-    function addNewTier(uint8 _tier , uint256 _amount) public onlyOwnerRole {
-        require(_tier >= 1, "Invalid tier");
-        require(_tier > tierCount, "Tier should greater then other tiers");
-        tierStakeAmounts[_tier] = _amount;
         tierCount++;
     }
 
     function stake(uint8 tier) external nonReentrant {
         require(!isStopped, "Staking paused");
-        require(block.timestamp <  claimTime,"Can't lock!");
+        require(block.timestamp < claimTime, "Can't lock!");
         require(tier >= 1, "Invalid tier");
         require(usersTier[msg.sender] == 0, "User has already staked");
         require(tierStakeAmounts[tier] > 0, "Tier not available for staking");
@@ -134,8 +168,6 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
     function hasStaked(address user) external view returns (bool) {
         return usersTier[user] > 0;
     }
-
-
 
     function withdraw() external nonReentrant {
         require(usersTier[msg.sender] > 0, "User has not staked");
@@ -246,8 +278,6 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         delete usersInTier[tier][userAddress];
         usersTier[userAddress] = 0;
 
- 
-
         // Reset confirmations
         for (uint256 i = 0; i < confirmationWalletCount; i++) {
             confirmations[confirmationWalletAddresses[i]] = ConfirmationData(
@@ -260,18 +290,18 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
         TLs["EmergencyWithdrawERC20"].isActive = false;
     }
 
-
     // Function to add confirmation on each time by confirmation wallet
     function updateCurrentConfirmationStatus() public onlyConfirmationRole {
-        require(_msgSender() != address(0), "Invalid confirmation wallet address");
+        require(
+            _msgSender() != address(0),
+            "Invalid confirmation wallet address"
+        );
         require(
             isExistConfirmationWallet(_msgSender()),
             "You are not a confirmation wallet."
         );
 
-    
         confirmations[msg.sender] = ConfirmationData(true, block.timestamp + 1);
-     
     }
 
     // Function to check if the wallet address exist in confirmation list wallet or not
@@ -494,4 +524,10 @@ contract IDOLaunchpadStakingContract is ReentrancyGuard, AccessControl {
 
         emit setOwnerFunctionDuration(ownerFunctionsDuration);
     }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {}
 }

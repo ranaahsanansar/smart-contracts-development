@@ -30,6 +30,7 @@ contract EthereumChainPublicSale {
         uint256 totalTargetUsdt;
         uint256 currentRaisedUsdt;
         uint256 maxAllowedUsdtPerWallet;
+        uint256 minAllowedUsdt;
         uint256 fromDate;
         uint256 toDate;
         bool isLive;
@@ -94,6 +95,7 @@ contract EthereumChainPublicSale {
             publicSalesIdos[_idoTokenAddress].priceUsdt != 0,
             "This ido set to invalid price"
         );
+        require(publicSalesIdos[_idoTokenAddress].minAllowedUsdt <= _amountUsdt, "Invalid minimum amount");
 
         // Determine the conversion factor
         uint256 conversionFactor = 10 **
@@ -141,7 +143,8 @@ contract EthereumChainPublicSale {
         uint256 _fromDate,
         uint256 _toDate,
         uint8 _decimals,
-        uint256 _maxAllowed
+        uint256 _maxAllowed,
+        uint256 _minAllowed
     ) public onlyAdmin {
         require(publicSalesIdos[_idoTokenAddress].toDate == 0 , "This sale is already registered");
         require(_targetUsdt != 0 && _priceUsdt != 0, "Invalid Aurguments");
@@ -151,6 +154,7 @@ contract EthereumChainPublicSale {
             _targetUsdt,
             0,
             _maxAllowed,
+            _minAllowed,
             _fromDate,
             _toDate,
             false,
@@ -165,12 +169,14 @@ contract EthereumChainPublicSale {
         uint256 _priceUsdt,
         uint256 _targetUsdt,
         uint8 _decimals,
-        uint256 _maxAllowed
+        uint256 _maxAllowed,
+        uint256 _minAllowed
     ) public onlyAdmin {
         publicSalesIdos[_idoTokenAddress].priceUsdt = _priceUsdt;
         publicSalesIdos[_idoTokenAddress].totalTargetUsdt = _targetUsdt;
         publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS = _decimals;
         publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet = _maxAllowed;
+        publicSalesIdos[_idoTokenAddress].minAllowedUsdt = _minAllowed;
     }
 
     function deleteIdo(address _idoTokenAddress) public onlyAdmin {
