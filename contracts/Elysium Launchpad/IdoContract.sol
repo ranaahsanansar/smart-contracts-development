@@ -147,7 +147,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     }
     Params public Parameters;
     // CONSTRUCTOR
-    //["2500000000000000000000000",1712663040,1712672720,"0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1","20000000000","20000000000","20000000000","10000000","10000000","10000000",5000,"0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d","0x441844CA350364b7eC75873E411c90A2C414D63d","0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1"]
+    //["2500000000000000000000000",1712663040,1712672720,"0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1","20000000000","20000000000","20000000000","10000000","10000000","10000000",5000,"0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d","0x441844CA350364b7eC75873E411c90A2C414D63d"]
      constructor(
     ParamsConstructor memory _parameters
     ) {
@@ -362,7 +362,7 @@ contract ElysiumLaunchpadIDOContract is AccessControl,
     }
     // Function to add an address to the whitelist for a specific tier
     function addToWhitelist(uint8 t, address[] memory users) external onlyWhitelisterRole{
-    require(t >= 1 && t <= 3, "Invalid t");
+    require(t >= 1 && t <= tierCount, "Invalid t");
     for (uint256 i = 0; i < users.length; i++) {
         address user = users[i];
         (bool whitelisted,) = isWhitelistedInAnyTier(user);

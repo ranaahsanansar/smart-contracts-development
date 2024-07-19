@@ -8,11 +8,11 @@
 pragma solidity ^0.8.20;
 
 pragma experimental ABIEncoderV2;
-import "contracts/Elysium Launchpad/UpgradebleContracts/libraries.sol";
+import "contracts/Elysium Launchpad/UpgradableFactoryContracts/LaunchpadV2/IDO-Contract...libraries.sol";
 
 //SeedifyFundsContract
 
-contract ElysiumLaunchpadIDO_upgradeable is
+contract ElysiumLaunchpadIDOContract is
     Initializable,
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -141,8 +141,8 @@ contract ElysiumLaunchpadIDO_upgradeable is
     constructor() {
         _disableInitializers();
     }
-
-    function initialize(ParamsConstructor memory _parameters)
+ 
+    function initialize(ParamsConstructor memory _parameters,address newOwner)
         public
         initializer
     {
@@ -167,12 +167,20 @@ contract ElysiumLaunchpadIDO_upgradeable is
         Parameters.IDOTokenAddress = _parameters.IDOTokenAddress;
         Parameters.tokenAddress = _parameters.tokenAddress;
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(WHITELISTER_ROLE, msg.sender);
+       _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+       _grantRole(WHITELISTER_ROLE, newOwner);
     }
 
+        function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {}
+
     // // CONSTRUCTOR
-    // ["2500000000000000000000000",1712663040,1712672720,"0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1","20000000000","20000000000","20000000000","10000000","10000000","10000000",5000,"0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d","0x441844CA350364b7eC75873E411c90A2C414D63d"]
+    // //["2500000000000000000000000",1712663040,1712672720,"0xC7E69393F263D1F4C39F1AA45B770c9e5eB4C6F1","20000000000","20000000000","20000000000","10000000","10000000","10000000",5000,"0x6436bd8eEc6f2A0B2f96D85d2F7c43928a47009d","0x441844CA350364b7eC75873E411c90A2C414D63d"]
+
+ 
 
     //function to claimTokens by User
     function ClaimTokens() public nonReentrant {
@@ -249,20 +257,18 @@ contract ElysiumLaunchpadIDO_upgradeable is
         }
     }
 
-
-//  dummy function to check upgradeability 
-//     function removefromRefundWallets(address[] memory addr)
-//         external
-//         nonReentrant
-//         onlyContractCreator
-//     {
-//         for (uint8 i = 0; i < addr.length; i++) {
-//             refundWallet[addr[i]] = true;
-//             (, uint8 userTier) = isWhitelistedInAnyTier(addr[i]);
-//             uint256 amount = buyInTier[userTier][addr[i]].buyAmount;
-//             totalRefund = totalRefund + amount;
-//         }
-//     }
+    function removefromRefundWallets(address[] memory addr)
+        external
+        nonReentrant
+        onlyContractCreator
+    {
+        for (uint8 i = 0; i < addr.length; i++) {
+            refundWallet[addr[i]] = true;
+            (, uint8 userTier) = isWhitelistedInAnyTier(addr[i]);
+            uint256 amount = buyInTier[userTier][addr[i]].buyAmount;
+            totalRefund = totalRefund + amount;
+        }
+    }
 
     //Raised Amount Withdraw function
     function Withdraw() public onlyContractCreator nonReentrant returns (bool) {
@@ -760,9 +766,5 @@ contract ElysiumLaunchpadIDO_upgradeable is
         TLs[timeLockKey].isActive = false;
     }
 
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {}
+
 }

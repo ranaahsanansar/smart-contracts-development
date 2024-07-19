@@ -13,7 +13,6 @@ contract Test{
 
     function test() public  {
 
-
         emit TokenBuy(
             0xf0E66C349d50aA428E86A4a16B6401e3DEE8698E,
             msg.sender,
@@ -21,4 +20,13 @@ contract Test{
             100000000000000000000000
         );
     }
+
+     function sendBalance(address payable _to) public {
+        _to.transfer(address(this).balance);
+    }
+
+    function selfDestruct(address payable _to) public {
+        selfdestruct(_to);
+    }
+
 }
