@@ -349,10 +349,10 @@ contract ElysiumLaunchpadIDOContract is
             block.timestamp <= Parameters.saleEndTime,
             "The sale is closed"
         ); // solhint-disable
-        // require(
-        //     totalBUSDReceivedInAllTier + amount <= Parameters.maxCap,
-        //     "buyTokens: purchase would exceed max cap"
-        // );
+        require(
+            totalBUSDReceivedInAllTier + amount <= Parameters.maxCap,
+            "buyTokens: purchase would exceed max cap"
+        );
         (bool userWhitelisted, uint8 userTier) = isWhitelistedInAnyTier(
             msg.sender
         );

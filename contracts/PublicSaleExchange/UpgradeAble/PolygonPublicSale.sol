@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 interface ERC20 {
     function transferFrom(
@@ -22,7 +26,12 @@ interface ERC20 {
     function totalSupply() external view returns (uint256);
 }
 
-contract CrossChainPublicSale {
+contract PolygonPublicSale is
+    Initializable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     uint8 public constant USDT_DECIMALS = 6;
 
     address public withdrawlAddress;
@@ -64,11 +73,19 @@ contract CrossChainPublicSale {
         uint256 tokenAmount
     );
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address _withdrawlAddress,
         address _adminAddress,
         address _usdtContractAddress
-    ) {
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __AccessControl_init();
+
         withdrawlAddress = _withdrawlAddress;
         adminAddress = _adminAddress;
         usdtContract = ERC20(_usdtContractAddress);
@@ -78,7 +95,6 @@ contract CrossChainPublicSale {
 
     // public functions --------------------------
 
-    // TODO: Remove returns
     function buy(address _idoTokenAddress, uint256 _amountUsdt) public {
         require(
             publicSalesIdos[_idoTokenAddress].isLive == true,
@@ -187,14 +203,12 @@ contract CrossChainPublicSale {
         uint256 _priceUsdt,
         uint256 _targetUsdt,
         uint8 _decimals,
-        uint256 _maxAllowed,
-        uint256 _minAllowed
+        uint256 _maxAllowed
     ) public onlyAdmin {
         publicSalesIdos[_idoTokenAddress].priceUsdt = _priceUsdt;
         publicSalesIdos[_idoTokenAddress].totalTargetUsdt = _targetUsdt;
         publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS = _decimals;
         publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet = _maxAllowed;
-        publicSalesIdos[_idoTokenAddress].minAllowedUsdt = _minAllowed;
     }
 
     function deleteIdo(address _idoTokenAddress) public onlyAdmin {
@@ -261,7 +275,7 @@ contract CrossChainPublicSale {
             publicSalesIdos[_idoAddress].currentRaisedUsdt;
     }
 
-      function updateRaisedAmount(
+    function updateRaisedAmount(
         address _idoAddress,
         address walletAddress,
         uint256 _usdtAmount,
@@ -273,4 +287,10 @@ contract CrossChainPublicSale {
         totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
         tokenBalance[_idoAddress][walletAddress] += _tokens;
     }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {}
 }

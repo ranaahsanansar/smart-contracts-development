@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-interface ERC20 {
+interface USDTERC20 {
     function transferFrom(
         address _from,
         address _to,
         uint256 _value
-    ) external returns (bool success);
+    ) external;
 
-    function transfer(address _to, uint256 _value)
-        external
-        returns (bool success);
+    function transfer(address to, uint256 value) external;
 
     function balanceOf(address account) external view returns (uint256);
 
@@ -18,16 +20,19 @@ interface ERC20 {
         external
         view
         returns (uint256);
-
-    function totalSupply() external view returns (uint256);
 }
 
-contract CrossChainPublicSale {
+contract EthereumPublicSale is
+    Initializable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     uint8 public constant USDT_DECIMALS = 6;
 
     address public withdrawlAddress;
     address public adminAddress;
-    ERC20 public usdtContract;
+    USDTERC20 public usdtContract;
 
     struct IdoInfo {
         uint256 priceUsdt;
@@ -64,15 +69,25 @@ contract CrossChainPublicSale {
         uint256 tokenAmount
     );
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address _withdrawlAddress,
         address _adminAddress,
         address _usdtContractAddress
-    ) {
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __AccessControl_init();
+
         withdrawlAddress = _withdrawlAddress;
         adminAddress = _adminAddress;
-        usdtContract = ERC20(_usdtContractAddress);
+        usdtContract = USDTERC20(_usdtContractAddress);
     }
+
+   
 
     // private functions -------------------------
 
@@ -130,10 +145,7 @@ contract CrossChainPublicSale {
 
         // transfer funds
 
-        require(
-            usdtContract.transferFrom(msg.sender, address(this), _amountUsdt),
-            "Unable to transfer usdt tokens"
-        );
+        usdtContract.transferFrom(msg.sender, address(this), _amountUsdt);
 
         emit TokenBuy(
             _idoTokenAddress,
@@ -187,14 +199,12 @@ contract CrossChainPublicSale {
         uint256 _priceUsdt,
         uint256 _targetUsdt,
         uint8 _decimals,
-        uint256 _maxAllowed,
-        uint256 _minAllowed
+        uint256 _maxAllowed
     ) public onlyAdmin {
         publicSalesIdos[_idoTokenAddress].priceUsdt = _priceUsdt;
         publicSalesIdos[_idoTokenAddress].totalTargetUsdt = _targetUsdt;
         publicSalesIdos[_idoTokenAddress].TOKEN_DECIMALS = _decimals;
         publicSalesIdos[_idoTokenAddress].maxAllowedUsdtPerWallet = _maxAllowed;
-        publicSalesIdos[_idoTokenAddress].minAllowedUsdt = _minAllowed;
     }
 
     function deleteIdo(address _idoTokenAddress) public onlyAdmin {
@@ -234,7 +244,7 @@ contract CrossChainPublicSale {
     }
 
     function withdrawToken(address _idoAddress) external onlyAdmin {
-        ERC20 idoContract = ERC20(_idoAddress);
+        USDTERC20 idoContract = USDTERC20(_idoAddress);
 
         require(
             idoContract.balanceOf(address(this)) > 0,
@@ -251,17 +261,7 @@ contract CrossChainPublicSale {
         adminAddress = _newOwner;
     }
 
-    function getRemainingSupply(address _idoAddress)
-        public
-        view
-        returns (uint256)
-    {
-        return
-            publicSalesIdos[_idoAddress].totalTargetUsdt -
-            publicSalesIdos[_idoAddress].currentRaisedUsdt;
-    }
-
-      function updateRaisedAmount(
+    function updateRaisedAmount(
         address _idoAddress,
         address walletAddress,
         uint256 _usdtAmount,
@@ -273,4 +273,12 @@ contract CrossChainPublicSale {
         totalSpendUsdtPerWallet[_idoAddress][walletAddress] += _usdtAmount;
         tokenBalance[_idoAddress][walletAddress] += _tokens;
     }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {}
+
+    
 }

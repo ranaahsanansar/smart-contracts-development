@@ -160,7 +160,7 @@ contract NativeChainPublicSale {
         onlyAdmin
     {
         publicSalesIdos[_idoAddress].isLive = _status;
-        // TODO: Add a event here
+       
     }
 
     function createPublicSaleForIdo(

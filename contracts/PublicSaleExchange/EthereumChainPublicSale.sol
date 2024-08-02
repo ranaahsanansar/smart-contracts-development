@@ -76,10 +76,19 @@ contract EthereumChainPublicSale {
 
     // TODO: Remove returns
     function buy(address _idoTokenAddress, uint256 _amountUsdt) public {
-        require(publicSalesIdos[_idoTokenAddress].isLive == true , "Ido is not live");
+        require(
+            publicSalesIdos[_idoTokenAddress].isLive == true,
+            "Ido is not live"
+        );
         require(_amountUsdt > 0, "Invalid amount");
-        require(publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp, "Due Date expired");
-        require(publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp, "Wait for starting date");
+        require(
+            publicSalesIdos[_idoTokenAddress].toDate >= block.timestamp,
+            "Due Date expired"
+        );
+        require(
+            publicSalesIdos[_idoTokenAddress].fromDate <= block.timestamp,
+            "Wait for starting date"
+        );
         require(
             publicSalesIdos[_idoTokenAddress].currentRaisedUsdt + _amountUsdt <=
                 publicSalesIdos[_idoTokenAddress].totalTargetUsdt,
@@ -133,7 +142,7 @@ contract EthereumChainPublicSale {
         onlyAdmin
     {
         publicSalesIdos[_idoAddress].isLive = _status;
-        // TODO: Add sa event here
+        
     }
 
     function createPublicSaleForIdo(
